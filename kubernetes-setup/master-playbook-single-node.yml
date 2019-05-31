@@ -91,25 +91,43 @@
       state: restarted
 
   - name: Initialize the Kubernetes cluster using kubeadm
-    command: kubeadm init --apiserver-advertise-address="10.10.60.10" --apiserver-cert-extra-sans="10.10.60.10"  --node-name k8s-master --pod-network-cidr=10.10.0.0/16
+    become: yes
+    command: kubeadm init --apiserver-advertise-address="10.120.60.10" --apiserver-cert-extra-sans="10.120.60.10"  --node-name k8s-master --pod-network-cidr=10.120.0.0/16
 
   - name: Setup kubeconfig for vagrant user
     command: "{{ item }}"
     with_items:
      - mkdir -p /home/vagrant/.kube
-     - cp -i /etc/kubernetes/admin.conf /home/vagrant/.kube/config
-     - chown vagrant:vagrant /home/vagrant/.kube/config
+     - sudo cp -i /etc/kubernetes/admin.conf /home/vagrant/.kube/config
+     - sudo chown vagrant:vagrant /home/vagrant/.kube/config
 
   - name: Install calico pod network
-    become: false
-    command: kubectl create -f https://docs.projectcalico.org/v3.4/getting-started/kubernetes/installation/hosted/calico.yaml
+    command: sudo kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(sudo kubectl version | base64 | tr -d '\n')"
 
-  - name: Generate join command
-    command: kubeadm token create --print-join-command
-    register: join_command
 
-  - name: Copy join command to local file
-    local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="/tmp/join-command"
+  - name: wait for k8s master node to be ready
+    shell: "sudo kubectl get nodes"
+    register: nodes
+    until:      
+      - '" Ready "  in nodes.stdout'      
+    retries: 20
+    delay: 2
+
+  - name: Configure the master node to host deployments
+    command: sudo kubectl taint nodes --all node-role.kubernetes.io/master-
+
+  - name: Setup Helm and Tiller
+    command: "{{ item }}"
+    with_items:
+     - cd /tmp/
+     - curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get > install-helm.sh
+     - chmod u+x install-helm.sh
+     - ./install-helm.sh
+     - kubectl -n kube-system create serviceaccount tiller
+     - kubectl create clusterrolebinding tiller --clusterrole cluster-admin --serviceaccount=kube-system:tiller
+     - kubectl get pods
+     - helm init --service-account tiller
+     - kubectl get pods --all-namespaces
 
   handlers:
     - name: docker status
