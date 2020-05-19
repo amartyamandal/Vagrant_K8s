@@ -43,6 +43,17 @@
       name: vagrant
       group: docker
 
+  - name: Copy the driver change command to server location
+    copy: src=configure-systemd.sh dest=/tmp/configure-systemd.sh remote_src=no mode=0777
+
+  - name: Setup recomended driver for docker to systemd
+    command: "{{ item }}"
+    with_items:
+     - sh /tmp/configure-systemd.sh
+     - mkdir -p /etc/systemd/system/docker.service.d
+     - systemctl daemon-reload
+     - systemctl restart docker
+
   - name: Remove swapfile from /etc/fstab
     mount:
       name: "{{ item }}"
@@ -91,12 +102,11 @@
       state: restarted
 
   - name: Copy the join command to server location
-    copy: src=/tmp/join-command dest=/tmp/join-command.sh mode=0777
-
+    copy: src=join-command dest=/tmp/join-command.sh mode=0777
+  
   - name: Join the node to cluster
     command: sh /tmp/join-command.sh
 
   handlers:
-    - name: docker status
-      service: name=docker state=started
-
+   - name: docker status
+     service: name=docker state=started

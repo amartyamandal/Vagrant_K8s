@@ -43,6 +43,17 @@
       name: vagrant
       group: docker
 
+  - name: Copy the driver change command to server location
+    copy: src=configure-systemd.sh dest=/tmp/configure-systemd.sh remote_src=no mode=0777
+
+  - name: Setup recomended driver for docker to systemd
+    command: "{{ item }}"
+    with_items:
+     - sh /tmp/configure-systemd.sh
+     - mkdir -p /etc/systemd/system/docker.service.d
+     - systemctl daemon-reload
+     - systemctl restart docker
+
   - name: Remove swapfile from /etc/fstab
     mount:
       name: "{{ item }}"
@@ -91,35 +102,28 @@
       state: restarted
 
   - name: Initialize the Kubernetes cluster using kubeadm
-    become: yes
-    command: kubeadm init --apiserver-advertise-address="10.120.60.10" --apiserver-cert-extra-sans="10.120.60.10"  --node-name k8s-master --pod-network-cidr=10.120.0.0/16
+    command: kubeadm init --apiserver-advertise-address="192.168.50.10" --apiserver-cert-extra-sans="192.168.50.10"  --node-name k8s-master --pod-network-cidr=192.168.0.0/16
 
   - name: Setup kubeconfig for vagrant user
     command: "{{ item }}"
     with_items:
      - mkdir -p /home/vagrant/.kube
-     - sudo cp -i /etc/kubernetes/admin.conf /home/vagrant/.kube/config
+     - cp -i /etc/kubernetes/admin.conf /home/vagrant/.kube/config
      - chown vagrant:vagrant /home/vagrant/.kube/config
 
   - name: Install calico pod network
     become: false
-    command: kubectl apply -f https://docs.projectcalico.org/v2.6/getting-started/kubernetes/installation/hosted/kubeadm/1.6/calico.yaml
+    command: kubectl apply -f https://docs.projectcalico.org/v3.9/manifests/calico.yaml
 
   - name: Generate join command
     command: kubeadm token create --print-join-command
-    register: join_command
+    register: join_command 
 
-  - name: Copy join command to file
-    template:
-      content: "{{ join_command.stdout_lines[0] }}"
-      dest: /tmp/join-command
-
-  - name: Fetch file to local
-    fetch:
-      src: /tmp/join-command
-      dest: /tmp/join-command
+  - name: Copy join command to local file
+    local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./join-command"
+    become_user: <local user who has access to the playbook directory>
+    run_once: true
 
   handlers:
     - name: docker status
-      service: name=docker state=started
-
+      service: name=docker state=started 
