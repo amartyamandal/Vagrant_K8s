@@ -2,4 +2,5 @@
 .vagrant
 kubernete-ssetup/master-playbook.yml
 kubernete-ssetup/join-command
+kubernete-ssetup/backup
 Vagrantfile

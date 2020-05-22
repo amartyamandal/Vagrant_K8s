@@ -2,6 +2,15 @@
 - hosts: all
   become: true
   tasks:
+  - name: Setup rbackup and restore folder
+    command: "{{ item }}"
+    with_items:
+     - mkdir /home/vagrant/backuprestore
+     - mkdir /home/vagrant/backuprestore/backup
+  
+  - name: Copy backup to server location
+    copy: src=./backup/ dest=/home/vagrant/backuprestore/backup/
+
   - name: Install packages that allow apt to be used over HTTPS
     apt:
       name: "{{ packages }}"
@@ -44,7 +53,7 @@
       group: docker
 
   - name: Copy the driver change command to server location
-    copy: src=configure-systemd.sh dest=/tmp/configure-systemd.sh remote_src=no mode=0777
+    copy: src=configure-systemd dest=/tmp/configure-systemd.sh remote_src=no mode=0777
 
   - name: Setup recomended driver for docker to systemd
     command: "{{ item }}"
@@ -121,8 +130,17 @@
 
   - name: Copy join command to local file
     local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./join-command"
-    become_user: <local user who has access to the playbook directory>
+    become_user: vindpro
     run_once: true
+
+  - name: Copy the backup command to server location
+    copy: src=backup-k8s dest=/home/vagrant/backuprestore/backup-k8s.sh mode=0777
+
+  - name: Copy the restore command to server location
+    copy: src=restore-k8s dest=/home/vagrant/backuprestore/restore-k8s.sh mode=0777
+
+  - name: Setup rbackup and restore folder
+    command: sudo chown -R vagrant /var/lib/etcd
 
   handlers:
     - name: docker status
